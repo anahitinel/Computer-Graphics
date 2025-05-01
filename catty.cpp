@@ -12,9 +12,6 @@
 #include <sstream>
 #include <string>
 #include <map>
-#include <algorithm>
-#include <limits>
-
 #define M_PI 3.14159265358979323846264338327950288
 
 double sqr(double x) {
@@ -487,7 +484,7 @@ int main() {
     }
 
     // Write the image to a PNG file
-    stbi_write_png("image.png", W, H, 3, &image[0], 0);
+    stbi_write_png("image3.png", W, H, 3, &image[0], 0);
 
     return 0;
 }

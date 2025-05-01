@@ -1,0 +1,5 @@
+---
+triple:          'arm64-apple-darwin'
+binary-path:     '/Users/anahitinel/Desktop/S6/CSE306/Computer-Graphics/catty'
+relocations:     []
+...
