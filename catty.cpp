@@ -15,10 +15,21 @@
 #include <algorithm>
 #include <limits>
 
+#include <random>
+static std::default_random_engine engine(10); // random seed = 10
+static std::uniform_real_distribution<double> uniform(0, 1);
+
 #define M_PI 3.14159265358979323846264338327950288
 
 double sqr(double x) {
     return x * x;
+}
+
+void boxMuller(double stdev, double &x, double &y) {
+    double r1 = uniform(engine);
+    double r2 = uniform(engine);
+    x= sqrt(-2 * log(r1)) * cos(2 * M_PI*r2) *stdev;
+    y= sqrt(-2 * log(r1)) * cos(2 * M_PI*r2) *stdev;
 }
 
 struct Vertex {
@@ -708,16 +719,34 @@ int main() {
     MeshObject* catMesh = new MeshObject("cat.obj", false, false);
     scene.add_obj(catMesh);
 
-    // Ray tracing loop
+    // Ray tracing loop with antialiasing
     std::vector<unsigned char> image(W * H * 3, 0);
+    
+    // Number of samples per pixel for antialiasing
+    int n_rays = 32;
+    
     for (int i = 0; i < H; i++) {
-        
         for (int j = 0; j < W; j++) {
-            double d = -W / (2 * tan(fov / 2));
-            Vector r_dir(j - W / 2 + 0.5, H / 2 - i + 0.5, d);
-            r_dir.normalize();
-            Ray r(camera_origin, r_dir);
-            Vector color = scene.getColor(r, 5);
+            // Accumulate color samples
+            Vector accumulated_color(0, 0, 0);
+            
+            // Cast multiple rays per pixel with slight offsets for antialiasing
+            for (int k = 0; k < n_rays; k++) {
+                // Generate random offsets
+                double x, y;
+                boxMuller(0.5, x, y);
+                
+                // Calculate ray direction with offset for antialiasing
+                double d = -W / (2 * tan(fov / 2));
+                Vector r_dir(j - W / 2 + 0.5 + x, H / 2 - i + 0.5 + y, d);
+                r_dir.normalize();
+                
+                Ray r(camera_origin, r_dir);
+                accumulated_color = accumulated_color + scene.getColor(r, 5);
+            }
+            
+            // Average the accumulated color
+            Vector color = accumulated_color / n_rays;
 
             // Gamma correction
             double gamma = 2.2;
