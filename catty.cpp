@@ -25,8 +25,6 @@ double sqr(double x) {
     return x * x;
 }
 
-// Add these matrix transform functions at the beginning of the file, after the Vector class
-
 // Matrix 3x3 class for rotations
 class Matrix {
 public:
@@ -145,7 +143,7 @@ Vector operator*(const Matrix& m, const Vector& v) {
 }
 
 Vector random_cos(const Vector& N) {
-    // Create a coordinate system around N
+    //coordinate system around N
     Vector T1;
     if (std::abs(N[0]) < std::abs(N[1]))
         T1 = Vector(0, N[2], -N[1]);
@@ -154,26 +152,26 @@ Vector random_cos(const Vector& N) {
     T1.normalize();
     Vector T2 = cross(N, T1);
     
-    // Generate random angles for cosine-weighted sampling
+    //random angles for cosine-weighted sampling
     double r1 = uniform(engine);
     double r2 = uniform(engine);
     double phi = 2 * M_PI * r1;
     double theta = acos(sqrt(r2));
     
-    // Convert to Cartesian coordinates
+    //convert to Cartesian coordinates
     double x = sin(theta) * cos(phi);
     double y = sin(theta) * sin(phi);
     double z = cos(theta);
     
-    // Transform to world space
+    //trsf to world space
     return x * T1 + y * T2 + z * N;
 }
 
 struct Material {
     std::string name;
     Vector albedo;
-    std::string diffuse_map; // Path to diffuse texture
-    int texture_id;          // Index to the loaded texture
+    std::string diffuse_map; //path to diffuse texture
+    int texture_id;          //index to the loaded texture
 };
 
 struct Texture {
@@ -202,7 +200,7 @@ public:
     std::vector<Material> materials;
     std::vector<Texture> textures;
 
-    // Function to load materials from MTL file
+    //load materials from MTL file
     void loadMTL(const std::string& filename) {
         std::ifstream file(filename);
         if (!file.is_open()) {
@@ -218,7 +216,7 @@ public:
             ss >> token;
 
             if (token == "newmtl") {
-                // Save the previous material if it exists
+                //save the previous material if it exists
                 if (!current_material.name.empty()) {
                     materials.push_back(current_material);
                 }
@@ -239,7 +237,6 @@ public:
             }
         }
 
-        // Don't forget to add the last material
         if (!current_material.name.empty()) {
             materials.push_back(current_material);
         }
@@ -368,8 +365,6 @@ public:
             }
         }
         
-        // If no materials were loaded but we know we need cat_diff.png,
-        // load it manually
         if (materials.empty()) {
             Material default_mat;
             default_mat.name = "default";
