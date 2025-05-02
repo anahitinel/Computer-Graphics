@@ -14,7 +14,7 @@
 #include <map>
 #include <algorithm>
 #include <limits>
-
+#include <cmath>
 #include <random>
 static std::default_random_engine engine(10); // random seed = 10
 static std::uniform_real_distribution<double> uniform(0, 1);
@@ -24,6 +24,41 @@ static std::uniform_real_distribution<double> uniform(0, 1);
 double sqr(double x) {
     return x * x;
 }
+
+// Add these matrix transform functions at the beginning of the file, after the Vector class
+
+// Matrix 3x3 class for rotations
+class Matrix {
+public:
+    double data[3][3];
+    
+    Matrix() {
+        // Identity matrix
+        for (int i = 0; i < 3; i++) {
+            for (int j = 0; j < 3; j++) {
+                data[i][j] = (i == j) ? 1 : 0;
+            }
+        }
+    }
+    
+    static Matrix rotateY(double angle) {
+        Matrix m;
+        m.data[0][0] = cos(angle);
+        m.data[0][2] = sin(angle);
+        m.data[2][0] = -sin(angle);
+        m.data[2][2] = cos(angle);
+        return m;
+    }
+    
+    static Matrix rotateX(double angle) {
+        Matrix m;
+        m.data[1][1] = cos(angle);
+        m.data[1][2] = -sin(angle);
+        m.data[2][1] = sin(angle);
+        m.data[2][2] = cos(angle);
+        return m;
+    }
+};
 
 void boxMuller(double stdev, double &x, double &y) {
     double r1 = uniform(engine);
@@ -100,6 +135,40 @@ Vector cross(const Vector& a, const Vector& b) {
     return Vector(a[1] * b[2] - a[2] * b[1], a[2] * b[0] - a[0] * b[2], a[0] * b[1] - a[1] * b[0]);
 }
 
+// Apply matrix to vector
+Vector operator*(const Matrix& m, const Vector& v) {
+    return Vector(
+        m.data[0][0] * v[0] + m.data[0][1] * v[1] + m.data[0][2] * v[2],
+        m.data[1][0] * v[0] + m.data[1][1] * v[1] + m.data[1][2] * v[2],
+        m.data[2][0] * v[0] + m.data[2][1] * v[1] + m.data[2][2] * v[2]
+    );
+}
+
+Vector random_cos(const Vector& N) {
+    // Create a coordinate system around N
+    Vector T1;
+    if (std::abs(N[0]) < std::abs(N[1]))
+        T1 = Vector(0, N[2], -N[1]);
+    else
+        T1 = Vector(N[2], 0, -N[0]);
+    T1.normalize();
+    Vector T2 = cross(N, T1);
+    
+    // Generate random angles for cosine-weighted sampling
+    double r1 = uniform(engine);
+    double r2 = uniform(engine);
+    double phi = 2 * M_PI * r1;
+    double theta = acos(sqrt(r2));
+    
+    // Convert to Cartesian coordinates
+    double x = sin(theta) * cos(phi);
+    double y = sin(theta) * sin(phi);
+    double z = cos(theta);
+    
+    // Transform to world space
+    return x * T1 + y * T2 + z * N;
+}
+
 struct Material {
     std::string name;
     Vector albedo;
@@ -110,6 +179,18 @@ struct Material {
 struct Texture {
     int width, height, channels;
     unsigned char* data;
+};
+
+struct Intersection {
+  bool intersected = false;
+  bool reflective = false;
+  bool is_light = false;
+  double refractive_index = 1.;
+  double t;
+  Vector sphere_center;
+  Vector P;
+  Vector N;
+  Vector albedo;
 };
 
 class Mesh {
@@ -188,6 +269,10 @@ public:
         
         // Get the directory of the OBJ file for loading materials
         std::string directory = filename.substr(0, filename.find_last_of("/\\") + 1);
+    
+        // Create rotation matrix for 45 degrees around Y axis
+        double angle = -45.0 * M_PI / 180.0;
+        Matrix rotY = Matrix::rotateY(angle);
         
         int current_material_id = 0;
         std::string line;
@@ -201,15 +286,22 @@ public:
                 Vertex v;
                 ss >> v.x >> v.y >> v.z;
                 
-                // Scale and translate the model to position it properly
-                v.x *= 0.6;  // Scale by 0.6 as suggested in the document
+                // Scale the model
+                v.x *= 0.6;
                 v.y *= 0.6;
                 v.z *= 0.6;
                 
-                v.y -= 10.0;  // Translate by (0, -10, 0) to place it on the ground
+                // Apply rotation around Y axis (45 degrees)
+                Vector vrot = rotY * Vector(v.x, v.y, v.z);
+                v.x = vrot[0];
+                v.y = vrot[1];
+                v.z = vrot[2];
+                
+                // Translate to place it on the ground
+                v.y -= 10.0;
                 
                 vertices.push_back(v);
-            } 
+            }
             else if (type == "vt") {
                 // Read texture coordinates
                 TexCoord vt;
@@ -652,6 +744,7 @@ public:
         Vector color;
         int object_id;
         Vector albedo;
+        double eps = 1E-8;
 
         if (intersect(r, P, N, t, object_id, albedo)) {
             Object* hitObject = objects[object_id];
@@ -667,7 +760,7 @@ public:
             // Check for shadows
             bool is_in_shadow = ShadowRay(P, L, d2);
             
-            // Calculate illumination
+            // Calculate direct illumination
             if (!is_in_shadow) {
                 color = albedo * diffuse * light_intensity / (4 * M_PI * d2);
             } else {
@@ -684,6 +777,25 @@ public:
                 double specular = 0.4 * pow(spec, 50);  // Specular intensity and shininess
                 color = color + Vector(specular, specular, specular);
             }
+
+            // Add indirect lighting if we have ray depth left
+            if (ray_depth > 0) {
+                // Generate random direction in hemisphere for indirect lighting
+                Vector raydir = random_cos(N);
+                Ray randomRay(P + eps * N, raydir);
+                
+                // Recursive call to get indirect lighting
+                Vector indirect_color = getColor(randomRay, ray_depth - 1);
+                
+                // Compute contribution of indirect lighting
+                // Factor of 0.5 to control indirect light intensity
+                // Apply component-wise multiplication of albedo and indirect_color
+                Vector scaled_indirect;
+                scaled_indirect[0] = albedo[0] * indirect_color[0] * 0.5;
+                scaled_indirect[1] = albedo[1] * indirect_color[1] * 0.5;
+                scaled_indirect[2] = albedo[2] * indirect_color[2] * 0.5;
+                color = color + scaled_indirect;
+            }
             
             return color;
         }
@@ -691,7 +803,6 @@ public:
         // Background color (black)
         return Vector(0., 0., 0.);
     }
-
     Vector light_position;
     double light_intensity;
 };
@@ -699,13 +810,21 @@ public:
 int main() {
     int W = 512;
     int H = 512;
-    Vector camera_origin(0, 0, 55);
+
+    double camera_angle = -10.0 * M_PI / 180.0;
+    Matrix cameraRotX = Matrix::rotateX(camera_angle);
+
+    Vector camera_origin(10, 10, 45);
     double fov = 60 * M_PI / 180.0;
+
+    Sphere Smirror(Vector(20.,0.,10.), 10, Vector(0.5, 0.5, 0.5), 1., true, false, false);
 
     // Create the scene
     Scene scene;
     scene.light_position = Vector(-10, 20, 40);
     scene.light_intensity = 1E7;
+
+    scene.add_sphere(&Smirror);
 
     // Add walls
     scene.add_sphere(new Sphere(Vector(0, -1000, 0), 990, Vector(0.16, 0.8, 0.5), 0., false, false, false)); // bottom wall, light blue
@@ -738,7 +857,10 @@ int main() {
                 
                 // Calculate ray direction with offset for antialiasing
                 double d = -W / (2 * tan(fov / 2));
-                Vector r_dir(j - W / 2 + 0.5 + x, H / 2 - i + 0.5 + y, d);
+                Vector raw_dir(j - W / 2 + 0.5 + x, H / 2 - i + 0.5 + y, d);
+                
+                // Apply camera rotation
+                Vector r_dir = cameraRotX * raw_dir;
                 r_dir.normalize();
                 
                 Ray r(camera_origin, r_dir);
@@ -757,7 +879,7 @@ int main() {
     }
 
     // Write the image to a PNG file
-    stbi_write_png("image4.png", W, H, 3, &image[0], 0);
+    stbi_write_png("image7.png", W, H, 3, &image[0], 0);
 
     return 0;
 }
