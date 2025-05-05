@@ -755,7 +755,11 @@ public:
             // Check for shadows
             bool is_in_shadow = ShadowRay(P, L, d2);
             
-            // Calculate direct illumination
+            if (hitObject -> isMirror()) {
+                Vector reflectedDir = r.u - 2 * dot(r.u, N) * N;
+                Ray reflectedRay(P + 0.0001 * reflectedDir, reflectedDir);
+                return getColor(reflectedRay, ray_depth - 1);
+            };
             if (!is_in_shadow) {
                 color = albedo * diffuse * light_intensity / (4 * M_PI * d2);
             } else {
@@ -812,7 +816,7 @@ int main() {
     Vector camera_origin(10, 10, 45);
     double fov = 60 * M_PI / 180.0;
 
-    Sphere Smirror(Vector(20.,0.,10.), 10, Vector(0.5, 0.5, 0.5), 1., true, false, false);
+    Sphere Smirror(Vector(20.,0.,20.), 10, Vector(0.5, 0.5, 0.5), 1., true, false, false);
 
     // Create the scene
     Scene scene;
@@ -837,7 +841,7 @@ int main() {
     std::vector<unsigned char> image(W * H * 3, 0);
     
     // Number of samples per pixel for antialiasing
-    int n_rays = 32;
+    int n_rays = 4;
     
     for (int i = 0; i < H; i++) {
         for (int j = 0; j < W; j++) {
@@ -874,7 +878,7 @@ int main() {
     }
 
     // Write the image to a PNG file
-    stbi_write_png("image7.png", W, H, 3, &image[0], 0);
+    stbi_write_png("image8.png", W, H, 3, &image[0], 0);
 
     return 0;
 }
