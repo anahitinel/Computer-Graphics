@@ -14,7 +14,6 @@
 #include "codes/stb_image.h"
 
 #include "codes/vector.cpp"
-#include "codes/lbfgs.h"
 
 static std::default_random_engine engine(10); 
 static std::uniform_real_distribution<double> uniform(0, 1);
@@ -159,12 +158,13 @@ public:
                 if (i == j) continue;
                 V = clip_by_bisector(V, points[i], points[j], weights[i], weights[j]);
             }
+            /*
             for (int j = 0; j < N_disk; j++) {
                 double radius = sqrt(std::max(0.0, weights[i] - weights[weights.size() - 1]));
                 Vector u = unit_disk[j] * radius + points[i];
                 Vector v = unit_disk[(j + 1) % N_disk] * radius + points[i];
                 V = clip_by_edge(V, u, v);
-            }
+            } */
             cells[i] = V;
         }
     }
@@ -255,14 +255,24 @@ public:
     Fluid(int N = 1000):N(N){
         particles.resize(N);
         velocities.resize(N, Vector(0, 0, 0));
+
+        double cx = 0.5, cy = 0.75; // Centered and higher up
+        double radius = 0.15;
+
         for (int i = 0; i < N; i++) {
-            particles[i] = Vector(uniform(engine), uniform(engine), 0);
+            double r = radius * sqrt(uniform(engine));
+            double theta = uniform(engine) * 2 * M_PI;
+            double x = cx + r * cos(theta);
+            double y = cy + r * sin(theta);
+            particles[i] = Vector(x, y, 0);
         }
+
         fluid_volume = VOL_FLUID;
         ot.vor.points = particles;
-        ot.vor.weights.resize(N + 1, 1.0);
+        ot.vor.weights.resize(N + 1, 1.0); // Add a boundary cell
         ot.vor.weights[N] = 0.99;
     }
+
 
     void time_step(double dt) {
         double epsilon2 = 0.004 * 0.004;
@@ -276,12 +286,29 @@ public:
             Vector all_forces = m_i * g + spring_force;
             velocities[i] = velocities[i] + dt / m_i * all_forces;
             particles[i] = particles[i] + (dt * velocities[i]);
+            if (particles[i][0] < 0) {
+                particles[i][0] = 0;
+                velocities[i][0] *= -0.5;
+            }
+            if (particles[i][0] > 1) {
+                particles[i][0] = 1;
+                velocities[i][0] *= -0.5;
+            }
+            if (particles[i][1] < 0) {
+                particles[i][1] = 0;
+                velocities[i][1] *= -0.5;
+            }
+            if (particles[i][1] > 1) {
+                particles[i][1] = 1;
+                velocities[i][1] *= -0.5;
+            }
         }
+
     }
     typedef Polygon Facet;
 
     void run_simulation() {
-        double dt = 0.01;
+        double dt = 0.005;
         for (int i = 0; i < 100; i++) {
             time_step(dt);
             save_frame(ot.vor.cells, "test", i, N);
